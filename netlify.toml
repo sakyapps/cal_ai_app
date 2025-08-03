@@ -1,22 +1,15 @@
- Archivo de configuración de Netlify
+# Archivo de configuración de Netlify
 
 # Sección para configurar la construcción del sitio
 [build]
   # Comando que se ejecutará para construir la aplicación
-
-Edit
-
-Preview
-Indent mode
-
   command = "npm run build"
   
   # Directorio donde se encontrarán los archivos estáticos listos para publicar
   publish = "build"
 
-# Configuración de redireccionamiento, en caso de ser necesario
-# Por ejemplo, para aplicaciones de una sola página como React
-#[[redirects]]
-#  from = "/*"
-#  to = "/index.html"
-#  status = 200
+# Configuración de redireccionamiento para aplicaciones de una sola página (SPA) como React
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
