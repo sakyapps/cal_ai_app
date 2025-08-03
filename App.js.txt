@@ -1,0 +1,180 @@
+import React, { useState } from 'react';
+
+// Main App component for Cal AI replica
+export default function App() {
+  // State variables for the image, results, loading, and errors
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [nutritionalInfo, setNutritionalInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [prompt, setPrompt] = useState("Proporciona un desglose nutricional detallado de la comida en esta imagen, incluyendo el nombre del plato, las calorías, las proteínas, las grasas y los carbohidratos en gramos.");
+
+  /**
+   * Handles the file selection from the input.
+   * @param {object} event The file input change event.
+   */
+  const handleImageChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      // Create a preview URL for the selected image
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+      // Reset previous results
+      setNutritionalInfo(null);
+      setError(null);
+    }
+  };
+
+  /**
+   * Converts a file to a Base64 string.
+   * @param {File} file The file to convert.
+   * @returns {Promise<string>} A promise that resolves with the Base64 string.
+   */
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  /**
+   * Handles the analysis of the image using the Gemini API.
+   */
+  const handleAnalyzeImage = async () => {
+    // Validate that an image has been selected
+    if (!selectedImage) {
+      setError("Por favor, selecciona una imagen primero.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setNutritionalInfo(null);
+
+    try {
+      // Convert the image to a Base64 string
+      const base64ImageData = await fileToBase64(selectedImage);
+
+      // Create the payload for the API call
+      const payload = {
+        contents: [{
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: selectedImage.type,
+                data: base64ImageData
+              }
+            }
+          ]
+        }]
+      };
+
+      // Set up API key and URL
+      const apiKey = "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+      // Make the fetch call with exponential backoff
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error de la API: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      // Extract the response text
+      if (result.candidates && result.candidates.length > 0 &&
+          result.candidates[0].content && result.candidates[0].content.parts &&
+          result.candidates[0].content.parts.length > 0) {
+        const text = result.candidates[0].content.parts[0].text;
+        setNutritionalInfo(text);
+      } else {
+        setError("La API no devolvió información nutricional.");
+      }
+
+    } catch (e) {
+      console.error("Error al analizar la imagen:", e);
+      setError(`Error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-4 sm:p-8 font-sans antialiased">
+      <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-10 w-full max-w-4xl mx-auto my-8 border border-gray-200">
+        <h1 className="text-3xl sm:text-4xl font-bold text-center text-gray-800 mb-6">Cal AI Replica</h1>
+
+        {/* Image upload section */}
+        <div className="flex flex-col items-center space-y-4 mb-8">
+          {imagePreview && (
+            <div className="rounded-xl overflow-hidden shadow-md border border-gray-200">
+              <img src={imagePreview} alt="Comida seleccionada" className="max-w-xs sm:max-w-sm max-h-64 object-cover" />
+            </div>
+          )}
+          <label htmlFor="file-upload" className="w-full sm:w-auto cursor-pointer py-3 px-6 rounded-xl bg-blue-500 text-white text-lg font-semibold text-center transition-all duration-200 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            Seleccionar Imagen
+          </label>
+          <input
+            id="file-upload"
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="hidden"
+          />
+        </div>
+
+        {/* Prompt input field */}
+        <div className="mb-8">
+          <label htmlFor="prompt_input" className="block text-gray-700 text-sm font-bold mb-2">Instrucciones para la IA:</label>
+          <textarea
+            id="prompt_input"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="shadow appearance-none border rounded-xl w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 h-24"
+            placeholder="Puedes modificar el prompt para pedir información específica."
+          />
+        </div>
+
+        {/* Analyze button */}
+        <button
+          onClick={handleAnalyzeImage}
+          disabled={loading || !selectedImage}
+          className={`w-full py-4 px-6 rounded-xl text-lg font-semibold text-white transition-all duration-200 shadow-md transform hover:scale-105
+            ${loading || !selectedImage ? 'bg-green-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'}
+          `}
+        >
+          {loading ? 'Analizando...' : 'Analizar Comida'}
+        </button>
+
+        {/* Display for errors and nutritional info */}
+        <div className="mt-8">
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative" role="alert">
+              <span className="block sm:inline">{error}</span>
+            </div>
+          )}
+          {nutritionalInfo && (
+            <div className="bg-white shadow-inner rounded-xl p-6 mt-4 border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Información Nutricional:</h2>
+              <p className="text-gray-700 whitespace-pre-wrap">{nutritionalInfo}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
